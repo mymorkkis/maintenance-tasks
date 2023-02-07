@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  api:
+    container_name: maintenance_tasks_api
+    build:
+      context: .
+      dockerfile: ./cmd/api/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - $API_PORT:$API_PORT
+    volumes:
+      - ./cmd/api/:/app/cmd/api/
+      - ./internal/:/app/internal/
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    container_name: maintenance_tasks_db
+    image: mysql:8.0.31
+    env_file:
+      - .env
+    volumes:
+      - ./scripts/user_permissions.sh:/docker-entrypoint-initdb.d/1.sh"
+      - maintenance-tasks-db-data:/var/lib/mysql
+    healthcheck:
+      test: mysqladmin ping -h 127.0.0.1 -u $$MYSQL_USER --password=$$MYSQL_PASSWORD
+      start_period: 2s
+      interval: 2s
+      timeout: 5s
+      retries: 10
+  migrate:
+    image: migrate/migrate
+    container_name: maintenance_tasks_migrations
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    command: >
+      -path=./migrations/
+      -database=mysql://$MYSQL_USER:$MYSQL_PASSWORD@\(db:$MYSQL_PORT\)/$MYSQL_DATABASE
+      ${CMD:-up}
+
+volumes:
+  maintenance-tasks-db-data:
+    driver: local
+  
